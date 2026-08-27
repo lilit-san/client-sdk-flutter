@@ -196,9 +196,4 @@ class Hardware {
     selectedVideoInput ??= devices.firstWhereOrNull((element) => element.kind == 'videoinput');
     onDeviceChange.add(devices);
   }
-
-  /// Resets speaker output preference to the default (headset/earpiece preferred,
-  /// not forced). Call after a call ends to clear any preference set during it.
-  @Deprecated('Use AudioManager.instance.setSpeakerOutputPreferred instead')
-  Future<void> reset() => AudioManager.instance.setSpeakerOutputPreferred(false);
 }
