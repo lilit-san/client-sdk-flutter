@@ -307,17 +307,17 @@ void main() {
       // The speaker preference is runtime state owned by
       // setSpeakerOutputPreferred, so changing the session intent must not reset
       // it.
-      expect(manager.isSpeakerOutputPreferred, isTrue);
+      expect(manager.isSpeakerOutputPreferred, isFalse);
 
       await manager.setAudioSessionOptions(
         const AudioSessionOptions.mediaPlayback(),
       );
-      expect(manager.isSpeakerOutputPreferred, isTrue);
+      expect(manager.isSpeakerOutputPreferred, isFalse);
 
       await manager.setAudioSessionOptions(
         const AudioSessionOptions.communication(),
       );
-      expect(manager.isSpeakerOutputPreferred, isTrue);
+      expect(manager.isSpeakerOutputPreferred, isFalse);
     });
 
     test('resolves communication Apple session policy from speaker preference', () {

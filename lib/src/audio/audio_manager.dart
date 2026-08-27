@@ -77,7 +77,7 @@ class AudioManager {
 
   AudioSessionOptions _options = const AudioSessionOptions.communication();
   AudioSessionManagementMode _managementMode = AudioSessionManagementMode.automatic;
-  bool _preferSpeakerOutput = true;
+  bool _preferSpeakerOutput = false;
   bool _forceSpeakerOutput = false;
   bool _isPlayoutEnabled = false;
   bool _isRecordingEnabled = false;
@@ -120,10 +120,15 @@ class AudioManager {
   void resetForTest() {
     _options = const AudioSessionOptions.communication();
     _managementMode = AudioSessionManagementMode.automatic;
-    _preferSpeakerOutput = true;
+    _preferSpeakerOutput = false;
     _forceSpeakerOutput = false;
     _isPlayoutEnabled = false;
     _isRecordingEnabled = false;
+  }
+
+  void reset() {
+    _preferSpeakerOutput = false;
+    _forceSpeakerOutput = false;
   }
 
   /// Invoked from native when the WebRTC audio engine's playout/recording state
