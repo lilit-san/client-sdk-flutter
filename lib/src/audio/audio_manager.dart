@@ -116,6 +116,13 @@ class AudioManager {
 
   bool get _isSessionActivationEnabled => _managementMode != AudioSessionManagementMode.externalCallSystem;
 
+  // Resolving the category from engine state (playAndRecord while recording,
+  // playback for playout-only) is only correct while LiveKit owns the whole
+  // session. Under an external call system the call is two-way for its entire
+  // lifetime, so a playout-only engine moment must not downgrade the session to
+  // playback: that drops the receiver route and mutes capture mid-call.
+  bool get _isEngineStateCategorySelectionEnabled => _managementMode == AudioSessionManagementMode.automatic;
+
   @visibleForTesting
   void resetForTest() {
     _options = const AudioSessionOptions.communication();
@@ -308,11 +315,12 @@ class AudioManager {
         final policy = _resolvedAudioSessionPolicy(_options);
         // Automatic mode: the native audio-engine delegate owns activation
         // timing, so this caches the policy and applies now only if the engine
-        // is already running. Category is resolved natively from engine state.
+        // is already running. Category is resolved natively from engine state
+        // unless an external call system owns the call.
         await Native.configureAudio(
           policy.appleConfiguration,
           automatic: true,
-          selectCategoryByEngineState: true,
+          selectCategoryByEngineState: _isEngineStateCategorySelectionEnabled,
           forceSpeakerOutput: policy.forceSpeakerOutput,
         );
       } else {
@@ -362,7 +370,7 @@ class AudioManager {
     await Native.configureAudio(
       config,
       automatic: _isAutomaticConfigurationEnabled,
-      selectCategoryByEngineState: _isAutomaticConfigurationEnabled,
+      selectCategoryByEngineState: _isEngineStateCategorySelectionEnabled,
       forceSpeakerOutput: policy.forceSpeakerOutput,
     );
   }
