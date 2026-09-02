@@ -625,10 +625,16 @@ class LocalParticipant extends Participant<LocalTrackPublication> {
 
   /// Convenience method to unpublish all tracks.
   Future<void> unpublishAllTracks({bool notify = true, bool? stopOnUnpublish}) async {
-    final trackSids = trackPublications.keys.toSet();
-    for (final trackid in trackSids) {
-      await removePublishedTrack(trackid, notify: notify);
-    }
+    // Runs on the same runner as the publish paths: an unpublish that
+    // interleaves with an in-flight publish walks trackPublications before the
+    // new track is in it, leaving a started capture nothing ever stops.
+    await _publishRunner.run(() async {
+      final trackSids = trackPublications.keys.toSet();
+      for (final trackid in trackSids) {
+        await removePublishedTrack(trackid, notify: notify);
+      }
+      return null;
+    });
   }
 
   Future<void> rePublishAllTracks() async {
