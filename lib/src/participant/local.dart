@@ -623,6 +623,22 @@ class LocalParticipant extends Participant<LocalTrackPublication> {
     await pub.dispose();
   }
 
+  /// Publishes a freshly created track, stopping its capture if publishing
+  /// fails. Without this a timed-out or rejected publish leaves the capture
+  /// running while the track never reaches [trackPublications], so no teardown
+  /// path can ever find it to stop it.
+  Future<LocalTrackPublication?> _publishOrStop(
+    LocalTrack track,
+    Future<LocalTrackPublication?> Function() publish,
+  ) async {
+    try {
+      return await publish();
+    } catch (_) {
+      await track.stop();
+      rethrow;
+    }
+  }
+
   /// Convenience method to unpublish all tracks.
   Future<void> unpublishAllTracks({bool notify = true, bool? stopOnUnpublish}) async {
     // Runs on the same runner as the publish paths: an unpublish that
@@ -849,11 +865,11 @@ class LocalParticipant extends Participant<LocalTrackPublication> {
           final CameraCaptureOptions captureOptions =
               cameraCaptureOptions ?? room.roomOptions.defaultCameraCaptureOptions;
           final track = await LocalVideoTrack.createCameraTrack(captureOptions);
-          return await _publishVideoTrack(track);
+          return await _publishOrStop(track, () => _publishVideoTrack(track));
         } else if (source == TrackSource.microphone) {
           final AudioCaptureOptions captureOptions = audioCaptureOptions ?? room.roomOptions.defaultAudioCaptureOptions;
           final track = await LocalAudioTrack.create(captureOptions);
-          return await _publishAudioTrack(track);
+          return await _publishOrStop(track, () => _publishAudioTrack(track));
         } else if (source == TrackSource.screenShareVideo) {
           ScreenShareCaptureOptions captureOptions =
               screenShareCaptureOptions ?? room.roomOptions.defaultScreenShareCaptureOptions;
