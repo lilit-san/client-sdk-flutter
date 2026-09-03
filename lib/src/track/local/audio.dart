@@ -34,6 +34,15 @@ import '../options.dart' as track_options;
 import 'local.dart';
 
 class LocalAudioTrack extends LocalTrack with AudioTrack, LocalAudioManagementMixin {
+  // The native audio device module's recording path is process-wide, so the
+  // explicit start below is only released once the last track that started it
+  // stops: stopping the screen-share audio track must not cut microphone
+  // capture, and the preconnect buffer hands its already-started track to the
+  // room rather than restarting it.
+  static int _nativeRecordingStartCount = 0;
+
+  bool _didStartNativeRecording = false;
+
   // Options used for this track
   @override
   covariant track_options.AudioCaptureOptions currentOptions;
@@ -96,7 +105,28 @@ class LocalAudioTrack extends LocalTrack with AudioTrack, LocalAudioManagementMi
           error.message ?? '',
         );
       }
+      if (!_didStartNativeRecording) {
+        _didStartNativeRecording = true;
+        _nativeRecordingStartCount++;
+      }
     }
+  }
+
+  @override
+  Future<void> stopCapture() async {
+    await super.stopCapture();
+    if (!_didStartNativeRecording) return;
+
+    _didStartNativeRecording = false;
+    _nativeRecordingStartCount--;
+    if (_nativeRecordingStartCount > 0) return;
+
+    _nativeRecordingStartCount = 0;
+    // Balances startCapture(). WebRTC stops the recording path it started
+    // itself when the sender goes away, but the explicit start above is ours
+    // to release: without this it survives unpublish, disconnect and dispose,
+    // and iOS keeps showing the microphone indicator after the call ended.
+    await Native.stopLocalRecording();
   }
 
   @override

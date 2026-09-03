@@ -99,15 +99,39 @@ abstract class Track extends DisposableChangeNotifier with EventsEmittable<Track
     return cid;
   }
 
+  // start() can only mark the track active once startCapture() has returned, so
+  // a stop() arriving mid-start used to read _active == false and return
+  // without tearing anything down. The capture startCapture() went on to open
+  // then belonged to nobody: on iOS that is the audio engine's recording path,
+  // which keeps the microphone (and its indicator) on until the process dies.
+  Future<bool>? _pendingStart;
+
   /// Start this [Track] if not started.
   /// Returns true if started, false if already started
   @mustCallSuper
   Future<bool> start() async {
+    final pendingStart = _pendingStart;
+    if (pendingStart != null) {
+      // another start is already opening the capture
+      await pendingStart;
+      return false;
+    }
+
     if (_active) {
       // already started
       return false;
     }
 
+    final start = _start();
+    _pendingStart = start;
+    try {
+      return await start;
+    } finally {
+      _pendingStart = null;
+    }
+  }
+
+  Future<bool> _start() async {
     logger.fine('$objectId.start()');
 
     await startCapture();
@@ -121,6 +145,18 @@ abstract class Track extends DisposableChangeNotifier with EventsEmittable<Track
   /// Returns true if stopped, false if already stopped
   @mustCallSuper
   Future<bool> stop() async {
+    // Let an in-flight start finish opening the capture so this stop can close
+    // it. A start that fails opened nothing, and its error belongs to whoever
+    // called start().
+    final pendingStart = _pendingStart;
+    if (pendingStart != null) {
+      try {
+        await pendingStart;
+      } catch (error) {
+        logger.fine('$objectId.stop() in-flight start did throw $error');
+      }
+    }
+
     if (!_active) {
       // already stopped
       return false;
