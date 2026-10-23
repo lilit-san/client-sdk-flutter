@@ -121,6 +121,18 @@ class TestE2EEManager implements E2EEManager {
     return Uint8List.fromList(data.reversed.toList());
   }
 
+  int disposeCount = 0;
+
+  /// Runs inside [dispose], so a test can inspect state at that moment.
+  void Function()? onDispose;
+
+  @override
+  Future<void> dispose() async {
+    disposeCount++;
+    onDispose?.call();
+    _room = null;
+  }
+
   @override
   Future<void> ratchetKey({String? participantId, int? keyIndex}) async {}
 

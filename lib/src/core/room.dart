@@ -216,6 +216,8 @@ class Room extends DisposableChangeNotifier with EventsEmittable<RoomEvent> {
         }
       }
       _pendingSidCompleters.clear();
+      // release frame cryptors while their peer connections still exist
+      await _disposeE2EEManager();
       // clean up routine
       await _cleanUp();
       // reject any in-flight RPC calls
@@ -655,6 +657,7 @@ class Room extends DisposableChangeNotifier with EventsEmittable<RoomEvent> {
       // pending one when it starts.
       if ((!engine.fullReconnectOnNext && !engine.isFullReconnectInProgress) ||
           event.reason == DisconnectReason.clientInitiated) {
+        await _disposeE2EEManager();
         await _cleanUp(disposeLocalParticipant: false);
         events.emit(RoomDisconnectedEvent(reason: event.reason));
         notifyListeners();
@@ -767,6 +770,9 @@ class Room extends DisposableChangeNotifier with EventsEmittable<RoomEvent> {
       logger.warning('Engine is already closed');
       return;
     }
+    // Frame cryptors are attached to the RTP senders/receivers that
+    // engine.disconnect() closes, so they are released first.
+    await _disposeE2EEManager();
     await engine.disconnect();
     if (!isPendingReconnect) {
       await _engineListener.waitFor<EngineDisconnectedEvent>(duration: const Duration(seconds: 10));
@@ -1089,6 +1095,15 @@ class Room extends DisposableChangeNotifier with EventsEmittable<RoomEvent> {
 }
 
 extension RoomPrivateMethods on Room {
+  // Detaches the E2EE manager from the room and engine before disposing it, so
+  // a later connect() sets up a fresh one and nothing reaches a disposed one.
+  Future<void> _disposeE2EEManager() async {
+    final e2eeManager = _e2eeManager;
+    _e2eeManager = null;
+    engine.setE2eeManager(null);
+    await e2eeManager?.dispose();
+  }
+
   // resets internal state to a re-usable state
   Future<void> _cleanUp({bool disposeLocalParticipant = true}) async {
     logger.fine('[${objectId}] cleanUp()');

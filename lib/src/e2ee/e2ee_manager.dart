@@ -58,6 +58,7 @@ class E2EEManager {
             identity: event.participant.identity,
             sid: event.publication.sid,
           );
+          if (frameCryptor == null) return;
           if (kIsWeb && event.publication.track!.codec != null) {
             await frameCryptor.updateCodec(event.publication.track!.codec!);
           }
@@ -95,6 +96,7 @@ class E2EEManager {
             identity: event.participant.identity,
             sid: event.publication.sid,
           );
+          if (frameCryptor == null) return;
           if (kIsWeb) {
             await frameCryptor.updateCodec(codec.toLowerCase());
           }
@@ -138,30 +140,59 @@ class E2EEManager {
     }
   }
 
+  /// Releases every frame cryptor, the data packet cryptor and the room
+  /// listener. [Room] calls this before closing its peer connections: each
+  /// native cryptor is attached to an RTP sender or receiver, and disposing it
+  /// after the connection is closed (or never) leaves it running against freed
+  /// native state.
+  Future<void> dispose() async {
+    await _cleanUp();
+    _room = null;
+  }
+
   Future<void> _cleanUp() async {
     await _listener?.cancelAll();
     await _listener?.dispose();
     _listener = null;
-    for (var frameCryptor in _frameCryptors.values.toList()) {
+    final frameCryptors = _frameCryptors.values.toList();
+    _frameCryptors.clear();
+    for (var frameCryptor in frameCryptors) {
+      await frameCryptor.setEnabled(false);
       await frameCryptor.dispose();
     }
-    _frameCryptors.clear();
 
     await _dataPacketCryptor?.dispose();
     _dataPacketCryptor = null;
   }
 
-  Future<FrameCryptor> _addRtpSender({
+  // A track event handler can still be awaiting cryptor creation when the
+  // manager is cleaned up (or set up for another room); such a cryptor would
+  // never be released, so it is disposed here and the handler bails out.
+  Future<FrameCryptor?> _keepUnlessCleanedUp(
+    EventsListener<RoomEvent>? owner,
+    FrameCryptor frameCryptor,
+  ) async {
+    if (owner != null && identical(owner, _listener)) return frameCryptor;
+    await frameCryptor.dispose();
+    return null;
+  }
+
+  Future<FrameCryptor?> _addRtpSender({
     required RTCRtpSender sender,
     required String identity,
     required String sid,
   }) async {
-    final frameCryptor = await frameCryptorFactory.createFrameCryptorForRtpSender(
-      participantId: identity,
-      sender: sender,
-      algorithm: _algorithm,
-      keyProvider: _keyProvider.keyProvider,
+    final owner = _listener;
+    final frameCryptor = await _keepUnlessCleanedUp(
+      owner,
+      await frameCryptorFactory.createFrameCryptorForRtpSender(
+        participantId: identity,
+        sender: sender,
+        algorithm: _algorithm,
+        keyProvider: _keyProvider.keyProvider,
+      ),
     );
+    if (frameCryptor == null) return null;
     _frameCryptors[{identity: sid}] = frameCryptor;
     await frameCryptor.setEnabled(_enabled);
     logger.info('_addRtpSender, setKeyIndex: ${_keyProvider.getLatestIndex(identity)}');
@@ -169,17 +200,22 @@ class E2EEManager {
     return frameCryptor;
   }
 
-  Future<FrameCryptor> _addRtpReceiver({
+  Future<FrameCryptor?> _addRtpReceiver({
     required RTCRtpReceiver receiver,
     required String identity,
     required String sid,
   }) async {
-    final frameCryptor = await frameCryptorFactory.createFrameCryptorForRtpReceiver(
-      participantId: identity,
-      receiver: receiver,
-      algorithm: _algorithm,
-      keyProvider: _keyProvider.keyProvider,
+    final owner = _listener;
+    final frameCryptor = await _keepUnlessCleanedUp(
+      owner,
+      await frameCryptorFactory.createFrameCryptorForRtpReceiver(
+        participantId: identity,
+        receiver: receiver,
+        algorithm: _algorithm,
+        keyProvider: _keyProvider.keyProvider,
+      ),
     );
+    if (frameCryptor == null) return null;
     _frameCryptors[{identity: sid}] = frameCryptor;
     await frameCryptor.setEnabled(_enabled);
     logger.info('_addRtpReceiver, setKeyIndex: ${_keyProvider.getLatestIndex(identity)}');
