@@ -1329,6 +1329,15 @@ class Engine extends Disposable with EventsEmittable<EngineEvent> {
     try {
       events.emit(const EngineFullRestartingEvent());
 
+      // Frame cryptors are attached to the senders and receivers of the peer
+      // connections disposed below, so they are released first. The E2EE
+      // manager creates new ones as tracks are republished and resubscribed.
+      try {
+        await _e2eeManager?.disposeFrameCryptors();
+      } catch (error) {
+        logger.warning('[$objectId] failed to dispose frame cryptors: $error');
+      }
+
       if (signalClient.connectionState == ConnectionState.connected) {
         await signalClient.cleanUp();
       }

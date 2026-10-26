@@ -133,6 +133,17 @@ class TestE2EEManager implements E2EEManager {
     _room = null;
   }
 
+  int disposeFrameCryptorsCount = 0;
+
+  /// Runs inside [disposeFrameCryptors], so a test can inspect state at that moment.
+  void Function()? onDisposeFrameCryptors;
+
+  @override
+  Future<void> disposeFrameCryptors() async {
+    disposeFrameCryptorsCount++;
+    onDisposeFrameCryptors?.call();
+  }
+
   @override
   Future<void> ratchetKey({String? participantId, int? keyIndex}) async {}
 

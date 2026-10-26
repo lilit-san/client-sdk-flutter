@@ -31,6 +31,9 @@ import 'options.dart';
 class E2EEManager {
   Room? _room;
   final Map<Map<String, String>, FrameCryptor> _frameCryptors = {};
+  // Bumped whenever the frame cryptors are released, so a cryptor whose
+  // creation was in flight at that moment is not kept.
+  int _frameCryptorGeneration = 0;
   final BaseKeyProvider _keyProvider;
   final Algorithm _algorithm = Algorithm.kAesGcm;
   DataPacketCryptor? _dataPacketCryptor;
@@ -150,29 +153,44 @@ class E2EEManager {
     _room = null;
   }
 
-  Future<void> _cleanUp() async {
-    await _listener?.cancelAll();
-    await _listener?.dispose();
-    _listener = null;
+  /// Releases every frame cryptor but stays set up for the room: tracks
+  /// published or subscribed afterwards get new cryptors. The engine calls this
+  /// during a full reconnect, before it disposes the peer connections the
+  /// cryptors are attached to. Republishing does not emit
+  /// [LocalTrackUnpublishedEvent], so the old sender cryptors would otherwise
+  /// stay alive until the room disconnects.
+  Future<void> disposeFrameCryptors() async {
+    _frameCryptorGeneration++;
     final frameCryptors = _frameCryptors.values.toList();
     _frameCryptors.clear();
     for (var frameCryptor in frameCryptors) {
       await frameCryptor.setEnabled(false);
       await frameCryptor.dispose();
     }
+  }
+
+  Future<void> _cleanUp() async {
+    await _listener?.cancelAll();
+    await _listener?.dispose();
+    _listener = null;
+    await disposeFrameCryptors();
 
     await _dataPacketCryptor?.dispose();
     _dataPacketCryptor = null;
   }
 
   // A track event handler can still be awaiting cryptor creation when the
-  // manager is cleaned up (or set up for another room); such a cryptor would
-  // never be released, so it is disposed here and the handler bails out.
+  // manager is cleaned up (or set up for another room), or when the frame
+  // cryptors are released for a full reconnect; such a cryptor would never be
+  // released, so it is disposed here and the handler bails out.
   Future<FrameCryptor?> _keepUnlessCleanedUp(
     EventsListener<RoomEvent>? owner,
+    int generation,
     FrameCryptor frameCryptor,
   ) async {
-    if (owner != null && identical(owner, _listener)) return frameCryptor;
+    if (owner != null && identical(owner, _listener) && generation == _frameCryptorGeneration) {
+      return frameCryptor;
+    }
     await frameCryptor.dispose();
     return null;
   }
@@ -183,8 +201,10 @@ class E2EEManager {
     required String sid,
   }) async {
     final owner = _listener;
+    final generation = _frameCryptorGeneration;
     final frameCryptor = await _keepUnlessCleanedUp(
       owner,
+      generation,
       await frameCryptorFactory.createFrameCryptorForRtpSender(
         participantId: identity,
         sender: sender,
@@ -206,8 +226,10 @@ class E2EEManager {
     required String sid,
   }) async {
     final owner = _listener;
+    final generation = _frameCryptorGeneration;
     final frameCryptor = await _keepUnlessCleanedUp(
       owner,
+      generation,
       await frameCryptorFactory.createFrameCryptorForRtpReceiver(
         participantId: identity,
         receiver: receiver,
