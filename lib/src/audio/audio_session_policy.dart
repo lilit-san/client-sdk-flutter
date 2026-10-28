@@ -31,6 +31,11 @@ class ResolvedAudioSessionPolicy {
   final bool forceSpeakerOutput;
   final bool automatic;
 
+  /// Whether native should hard-route to the speaker with
+  /// overrideOutputAudioPort. In automatic mode the mode is always voiceChat,
+  /// so the override is the only way the speaker preference reaches iOS.
+  bool get appleForceSpeakerOutput => automatic ? preferSpeakerOutput : forceSpeakerOutput;
+
   NativeAudioConfiguration get appleConfiguration {
     if (automatic) {
       return NativeAudioConfiguration(
@@ -40,13 +45,12 @@ class ResolvedAudioSessionPolicy {
           AppleAudioCategoryOption.allowBluetoothA2DP,
           AppleAudioCategoryOption.allowAirPlay,
         },
-        // A forced speaker is routed by overrideOutputAudioPort, so the mode
-        // stays voiceChat. videoChat makes the speaker the default route, which
-        // turns a system-level override(.none) (the CallKit speaker button) into
-        // a no-op: the route never leaves the speaker and no route change fires.
-        appleAudioMode: preferSpeakerOutput && !forceSpeakerOutput
-            ? AppleAudioMode.videoChat
-            : AppleAudioMode.voiceChat,
+        // Always voiceChat: the speaker is routed by overrideOutputAudioPort
+        // (see appleForceSpeakerOutput), never by the mode. videoChat makes the
+        // speaker the default route, which turns a system-level override(.none)
+        // (the CallKit speaker button) into a no-op: the route never leaves the
+        // speaker and no route change fires.
+        appleAudioMode: AppleAudioMode.voiceChat,
       );
     }
 

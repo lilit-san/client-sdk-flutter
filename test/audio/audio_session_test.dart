@@ -329,7 +329,7 @@ void main() {
       );
 
       expect(speaker.appleAudioCategory, AppleAudioCategory.playAndRecord);
-      expect(speaker.appleAudioMode, AppleAudioMode.videoChat);
+      expect(speaker.appleAudioMode, AppleAudioMode.voiceChat);
       expect(
         speaker.appleAudioCategoryOptions,
         {
@@ -348,15 +348,21 @@ void main() {
       expect(receiver.appleAudioMode, AppleAudioMode.voiceChat);
     });
 
-    test('forced speaker keeps voiceChat so a system override(.none) reaches the receiver', () {
-      final forced = resolveApplePolicy(
-        const AudioSessionOptions.communication(),
-        preferSpeakerOutput: true,
-        forceSpeakerOutput: true,
+    test('automatic Apple policy routes the speaker by override, never by mode', () {
+      ResolvedAudioSessionPolicy policy({required bool prefer, bool automatic = true}) => ResolvedAudioSessionPolicy(
+        options: const AudioSessionOptions.communication(),
+        preferSpeakerOutput: prefer,
+        forceSpeakerOutput: false,
+        automatic: automatic,
       );
 
-      expect(forced.appleAudioCategory, AppleAudioCategory.playAndRecord);
-      expect(forced.appleAudioMode, AppleAudioMode.voiceChat);
+      // voiceChat keeps the receiver the default route, so a system
+      // override(.none) (the CallKit speaker button) can reach it.
+      expect(policy(prefer: true).appleConfiguration.appleAudioMode, AppleAudioMode.voiceChat);
+      expect(policy(prefer: true).appleForceSpeakerOutput, isTrue);
+      expect(policy(prefer: false).appleForceSpeakerOutput, isFalse);
+      // Manual mode keeps the explicit force flag.
+      expect(policy(prefer: true, automatic: false).appleForceSpeakerOutput, isFalse);
     });
 
     test('automatic Apple policy ignores manual media options', () {
@@ -365,7 +371,7 @@ void main() {
       );
 
       expect(config.appleAudioCategory, AppleAudioCategory.playAndRecord);
-      expect(config.appleAudioMode, AppleAudioMode.videoChat);
+      expect(config.appleAudioMode, AppleAudioMode.voiceChat);
       expect(
         config.appleAudioCategoryOptions,
         {
