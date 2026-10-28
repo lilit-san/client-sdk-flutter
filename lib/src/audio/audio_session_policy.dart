@@ -40,7 +40,13 @@ class ResolvedAudioSessionPolicy {
           AppleAudioCategoryOption.allowBluetoothA2DP,
           AppleAudioCategoryOption.allowAirPlay,
         },
-        appleAudioMode: preferSpeakerOutput ? AppleAudioMode.videoChat : AppleAudioMode.voiceChat,
+        // A forced speaker is routed by overrideOutputAudioPort, so the mode
+        // stays voiceChat. videoChat makes the speaker the default route, which
+        // turns a system-level override(.none) (the CallKit speaker button) into
+        // a no-op: the route never leaves the speaker and no route change fires.
+        appleAudioMode: preferSpeakerOutput && !forceSpeakerOutput
+            ? AppleAudioMode.videoChat
+            : AppleAudioMode.voiceChat,
       );
     }
 

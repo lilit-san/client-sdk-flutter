@@ -348,6 +348,17 @@ void main() {
       expect(receiver.appleAudioMode, AppleAudioMode.voiceChat);
     });
 
+    test('forced speaker keeps voiceChat so a system override(.none) reaches the receiver', () {
+      final forced = resolveApplePolicy(
+        const AudioSessionOptions.communication(),
+        preferSpeakerOutput: true,
+        forceSpeakerOutput: true,
+      );
+
+      expect(forced.appleAudioCategory, AppleAudioCategory.playAndRecord);
+      expect(forced.appleAudioMode, AppleAudioMode.voiceChat);
+    });
+
     test('automatic Apple policy ignores manual media options', () {
       final config = resolveApplePolicy(
         const AudioSessionOptions.mediaPlayback(),
